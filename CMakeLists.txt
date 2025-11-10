@@ -7,8 +7,7 @@ find_package(TagLib 2.1.1 REQUIRED)
 
 set(SOURCES
 	./src/main.cpp
-	./src/ME_Parser.cpp
-	./src/ME_File.cpp
+	./src/ME_Core.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})

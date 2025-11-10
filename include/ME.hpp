@@ -1,13 +1,7 @@
 #pragma once
 
-namespace ME{
-	enum FileType{
-		invalid,
-		wav,
-		mp3,
-		flac
-	};
+#include "ME_Core.hpp"
 
-	class Parser;
-	class File;
+namespace ME{
+	class Core;
 }
