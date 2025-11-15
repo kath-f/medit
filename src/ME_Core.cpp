@@ -1,6 +1,5 @@
 #include "ME_Core.hpp"
 
-#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -10,7 +9,7 @@
 #include <taglib/textidentificationframe.h>
 
 //this is the function i want the main file to use when it wants to "run" the program
-void ME::Core::run(int argc, char** argv){
+int ME::Core::main(int argc, char** argv){
 	this->errorFlag = false;
 
 	this->parse(argc, argv);
@@ -23,7 +22,10 @@ void ME::Core::run(int argc, char** argv){
 		else if(this->command == "set"){
 			this->runSet();
 		}
+
+		return 0;
 	}
+	return -1;
 }
 
 void ME::Core::parse(int argc, char** argv){
@@ -31,7 +33,7 @@ void ME::Core::parse(int argc, char** argv){
 	for(int i=1; i<argc; i++){ //starting from 1 since 0 is always program name
 		
 		//if it find that the current argv is a command(set or get)
-		if(strcmp(argv[i], "set")==0 or strcmp(argv[i], "get")==0){
+		if(std::string(argv[i])=="set" or std::string(argv[i])=="get"){
 			//it will mark the command as the current argv
 			this->command = argv[i];
 			//and mark the attribute as the next argv over
@@ -40,7 +42,7 @@ void ME::Core::parse(int argc, char** argv){
 			//if it is set i will start a new search from 2 argvs over (1 after attribute)
 			//to look for values
 			//get doesnt need values
-			if(strcmp(argv[i], "set") == 0){
+			if(std::string(argv[i])=="set"){
 				for(int j=i+2; j<argc; j++){
 					this->values.push_back(argv[j]);
 				}
@@ -116,40 +118,21 @@ void ME::Core::checkForErrors(){
 }
 
 void ME::Core::runGet(){
-	if(this->attribute == "title"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(this->files.at(i).tag()->title());
-		}
-	}
-	else if(this->attribute == "artist"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(this->files.at(i).tag()->artist());
-		}
-	}
-	else if(this->attribute == "album"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(this->files.at(i).tag()->album());
-		}
-	}
-	else if(this->attribute == "comment"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(this->files.at(i).tag()->comment());
-		}
-	}
-	else if(this->attribute == "genre"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(this->files.at(i).tag()->genre());
-		}
-	}
-	else if(this->attribute == "year"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(std::to_string(this->files.at(i).tag()->year()));
-		}
-	}
-	else if(this->attribute == "track"){
-		for(int i=0; i<this->files.size(); i++){
-			this->outputs.push_back(std::to_string(this->files.at(i).tag()->track()));
-		}
+
+	for(int i=0; i<this->files.size(); i++){
+		
+		TagLib::String tag;
+		if(this->attribute == "title"){ tag = files.at(i).tag()->title();}
+		else if(this->attribute == "artist"){ tag = files.at(i).tag()->artist(); }
+		else if(this->attribute == "album"){ tag = files.at(i).tag()->album(); }
+		else if(this->attribute == "comment"){ tag = files.at(i).tag()->comment(); }
+		else if(this->attribute == "genre"){ tag = files.at(i).tag()->genre(); }
+		else if(this->attribute == "year"){ tag = std::to_string(files.at(i).tag()->year()); }
+		else if(this->attribute == "track"){ tag = std::to_string(files.at(i).tag()->track()); }
+		
+		this->outputs.push_back(tag);
+		std::cout << files.at(i).file()->name() << " " << this->attribute << ": "
+			<< tag << std::endl;
 	}
 }
 
@@ -157,57 +140,86 @@ void ME::Core::runSet(){
 	
 	for(int i=0; i<files.size(); i++){
 		if(!files.at(i).tag() or files.at(i).tag()->isEmpty()){
-			std::cout << files.at(i).file()->name() <<" File tag missing" << std::endl;
+			std::cout << files.at(i).file()->name() <<": file tag missing" << std::endl;
 			
 			files.at(i).file()->seek(0); 
 			TagLib::ByteVector fmt_tag = files.at(i).file()->readBlock(4);	
 
-			//FOR FLAC:
-			if(fmt_tag == TagLib::ByteVector("fLaC", 4)){
-				std::cout << "File identified as FLAC" << std::endl;
-			}
 			//FOR WAV (have to find the riff tag first)
-			else if(fmt_tag == TagLib::ByteVector("RIFF", 4)){
+			if(fmt_tag == TagLib::ByteVector("RIFF", 4)){
 				files.at(i).file()->seek(8);
 				fmt_tag = files.at(i).file()->readBlock(4);	
 
 				if(fmt_tag == TagLib::ByteVector("WAVE", 4)){
-					std::cout << "File identified as WAVE" << std::endl;
+					std::cout << "\tFile identified as WAVE" << std::endl;
+					//TODO: For this one i'll have to actually inject the binary data for tags
+					std::cout << "\tWAVE file metadata creation not supported rn, soweeyyyy :3" << std::endl;
+					continue;
 				}
 			}
-			//FOR MP3
-			else if(fmt_tag.mid(0, 3) == TagLib::ByteVector("ID3", 3)){
-				std::cout << "File identified as MP3";
-			}
 
-			std::cout << std::endl;
+			//FOR MP3
+			//the mp3 format doesn have a format ID like other formats, instead it has 11 "sync" bits
+			//this is kinda annoying.
+			else if((fmt_tag.at(0) == (char) 0xff) && (fmt_tag.at(1) >= (char) 0xf0)){
+				
+				//after identifying the file i'll construct it as an MPEG::File
+				std::cout << "\tFile identified as MP3" << std::endl;
+				TagLib::MPEG::File mpeg_file(files.at(i).file()->name());
+				
+				std::cout << "\tCreating tag..." << std::endl;
+				mpeg_file.ID3v2Tag(true); //this automatically creates a tag field if the file is missing
+				if(mpeg_file.save()){ //then save the file
+					std::cout << "\tFile saved with tag" << std::endl;
+					
+					//i create a FileRef based on the file
+					TagLib::FileRef mpeg_fileRef(&mpeg_file);
+					files.at(i) = mpeg_fileRef; //assign it to the place of the old file ref's on the vector
+
+					if(files.at(i).tag()){ //check again if the file was created just to be sure
+						std::cout << "\tTag created, populating..." << std::endl;
+						
+						//call populateTags with true, so it created "empty" fields
+						populateTags(true, i);
+						
+						//save the file
+						files.at(i).file()->save();
+						continue; //go on to the next file
+					}
+					std::cout << "\tCould not create tag" << std::endl;
+				}
+
+				std::cout << "\tCould not save file with new tag" << std::endl;
+			}
 		}
 		else{
-			if(attribute == "title"){
-				files.at(i).tag()->setTitle(values.at(i));
-			}
-			else if(attribute == "artist"){
-				files.at(i).tag()->setArtist(values.at(i));
-			}
-			else if(attribute == "album"){
-				files.at(i).tag()->setAlbum(values.at(i));
-			}
-			else if(attribute == "comment"){
-				files.at(i).tag()->setComment(values.at(i));
-			}
-			else if(attribute == "genre"){
-				files.at(i).tag()->setGenre(values.at(i));
-			}
-			else if(attribute == "year"){
-				files.at(i).tag()->setYear(std::atoi(values.at(i).toCString()));
-			}
-			else if(attribute == "track"){
-				files.at(i).tag()->setTrack(std::atoi(values.at(i).toCString()));
-			}
+			populateTags(false, i);
 		}
 
 		files.at(i).save();
 	}
+}
+
+void ME::Core::populateTags(bool createTags, int i){
+	if(createTags){
+		//creating the tags empty at first so they are all created
+		files.at(i).tag()->setTitle(" ");
+		files.at(i).tag()->setArtist(" ");
+		files.at(i).tag()->setAlbum(" ");
+		files.at(i).tag()->setComment(" ");
+		files.at(i).tag()->setGenre(" ");
+		files.at(i).tag()->setYear(0);
+		files.at(i).tag()->setTrack(0);
+		
+	}
+
+	if(this->attribute == "title"){ files.at(i).tag()->setTitle(values.at(i)); }
+	else if(this->attribute == "artist"){ files.at(i).tag()->setArtist(values.at(i)); }
+	else if(this->attribute == "album"){ files.at(i).tag()->setAlbum(values.at(i)); }
+	else if(this->attribute == "comment"){ files.at(i).tag()->setComment(values.at(i)); }
+	else if(this->attribute == "genre"){ files.at(i).tag()->setGenre(values.at(i)); }
+	else if(this->attribute == "year"){ files.at(i).tag()->setYear(std::atoi(values.at(i).toCString())); }
+	else if(this->attribute == "track"){ files.at(i).tag()->setTrack(std::atoi(values.at(i).toCString())); }
 }
 
 

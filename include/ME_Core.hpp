@@ -21,10 +21,12 @@ namespace ME{
 		void checkForErrors();
 		void runGet();
 		void runSet();
+
+		void populateTags(bool createTags, int i);
 	public:
 		Core(){};
 
-		void run(int argc, char** argv);
+		int main(int argc, char** argv);
 		
 		bool getErrorFlag();
 		std::vector <TagLib::FileRef> getFiles();
