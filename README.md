@@ -38,4 +38,4 @@ Values aren't necessary if using the get command.
 Example usage:
 `medit * set artist "me :3"`
 
-This would set the artist of all files in the current folde to "me :3"
+This would set the artist of all files in the current folder to "me :3"
