@@ -1,0 +1,804 @@
+#ifndef __ME_ARRAY_H
+#define __ME_ARRAY_H
+
+#include <stddef.h>
+
+typedef struct{
+  void** data; //array of void* 
+  size_t size;
+
+}ME_Array;
+#define ME_ARRAY_INIT ((ME_Array) {.data = NULL, .size=0})
+
+void me_array_push(ME_Array* arr, void* obj);
+void* me_array_get(ME_Array* arr, size_t index);
+void me_array_set(ME_Array* arr, size_t index, void* obj);
+void me_array_free(ME_Array* arr);
+
+#endif
+#ifndef __ME_FILE_H
+#define __ME_FILE_H
+
+/*
+   ME_File.h
+   Defines file structures and functions
+ */
+
+#include "ME_Metadata.h"
+#include "ME_Array.h"
+
+#include <stdio.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef struct{
+  ME_Array metadata_arr; //array of metadata chunks
+
+  FILE* cfile; 
+  char* name;
+  
+} ME_File;
+#define ME_FILE_NULL ((ME_File) {.metadata_arr=ME_ARRAY_INIT,	\
+				 .cfile=NULL,\
+				 .name=NULL})
+/*
+  PLEASE I BEG OF YOU, make sure you define a ME_File as ME_FILE_NULL before doing anything
+  with it.
+ 
+  there once was a little gurl,
+  who didn't initialize her struct to NULL
+  she passed it around
+  and got a segfault
+  and didn't konw where it came from
+
+  (kinda rhymes but not really)
+ */
+
+int me_openfile(ME_File* file); //function for opening files
+void me_closefile(ME_File* file); //function for closing files
+
+
+void me_fread_bytes(FILE* cfile, size_t n, void* buf);
+uint32_t me_fread_u32le(FILE* cfile);
+uint32_t me_fread_u32be(FILE* cfile);
+uint32_t me_fread_u32le_synchsafe(FILE* cfile);
+uint32_t me_fread_u32be_synchsafe(FILE* cfile);
+
+void me_fwrite_bytes(FILE* cfile, size_t n, void* buf);
+void me_fwrite_u32le(FILE* cfile, uint32_t obj);
+void me_fwrite_u32be(FILE* cfile, uint32_t obj);
+void me_fwrite_u32le_synchsafe(FILE* cfile, uint32_t obj);
+void me_fwrite_u32be_synchsafe(FILE* cfile, uint32_t obj);
+#endif
+#ifndef __ME_LIST_H
+#define __ME_LIST_H
+
+/*
+  ME_List.h
+  declares structures and functions for handling LIST type metadata
+ */
+
+#include "ME_File.h"
+
+/*
+typedef enum{
+ 
+  //to be defined, a list of valid info field IDs
+   
+} ME_INFOFieldID;
+
+//will have string equivalent of each item in the above enum
+const char** ME_INFOFieldIDTable = [];
+
+*/
+
+void me_try_list(ME_File* file);
+void me_get_list_info_fields(ME_File* file);
+void me_write_list_info_chunk(ME_File* file, ME_Array field_arr);
+
+/*
+const char* me_info_id_to_string(ME_INFOFIeldID id);
+ME_INFOFieldID me_string_to_info_id(const char* str);
+*/
+
+#endif
+#ifndef __ME_METADATA_H
+#define __ME_METADATA_H
+
+/*
+  ME_Metadata.h
+  Declarations of abstract metadata structures
+ */
+
+#include "ME_Array.h"
+
+#include <stddef.h>
+
+typedef enum{
+  ME_FORMAT_UNDEFINED,
+  ME_FORMAT_ID3v2,
+  ME_FORMAT_LIST_INFO,
+} ME_MetadataFormat;
+
+extern const char* ME_FORMAT_STRING_TABLE[];
+
+typedef struct{
+  char* id;
+  char* value;
+
+  size_t offset;
+} ME_MetadataField;
+
+typedef struct{
+  ME_MetadataFormat fmt;
+  size_t offset; //this should point to the location in the file immediately after id
+  size_t size;
+  
+  ME_Array field_arr;
+  
+} ME_Metadata;
+
+#endif
+#ifndef __ME_PRINT_H
+#define __ME_PRINT_H
+
+/*
+  ME_Print.h
+  Defines printing related structures and functions
+ */
+
+#include <stdarg.h>
+
+typedef enum{
+  ME_LOGLEVEL_ERROR,
+  ME_LOGLEVEL_WARN,
+  ME_LOGLEVEL_INFO,
+  ME_LOGLEVEL_DEBUG,
+  ME_LOGLEVEL_NONE
+}ME_LogLevel;
+
+#ifndef ME_DEFAULT_LOGLEVEL
+#define ME_DEFAULT_LOGLEVEL ME_LOGLEVEL_NONE
+#endif
+
+extern ME_LogLevel ME_GLOBAL_LOGLEVEL;
+
+#define ME_SEPARATOR "------------------------------------------------------------------------">
+
+void me_print(ME_LogLevel loglvl, const char* str, ...);
+
+#endif
+#include "ME_Array.h"
+
+#include "ME_Print.h"
+
+#include <stdlib.h>
+
+void me_array_push(ME_Array* arr, void* obj){
+  if(arr->size > 0 && sizeof(*obj) != sizeof(*(arr->data[0]))){
+    me_print(ME_LOGLEVEL_WARN,
+      "ME_Array: possible type mismatch, entry 0: %u bytes, entry passed: %u bytes",
+      sizeof(*obj), sizeof(*(arr->data[0])));
+    return;
+  }
+
+  arr->size ++;
+  arr->data = realloc(arr->data, arr->size * sizeof(obj));
+
+  arr->data[arr->size-1] = obj;
+}
+
+void* me_array_get(ME_Array* arr, size_t index){
+  if(index > arr->size-1){
+    me_print(ME_LOGLEVEL_WARN, "ME_Array: tried to get entry at index higher than size");
+    return NULL;
+  }
+  //else
+  return arr->data[index];
+}
+
+
+void me_array_set(ME_Array* arr, size_t index, void* obj){
+  if(index > arr->size-1){
+    me_print(ME_LOGLEVEL_WARN, "ME_Array: tried to set entry at index higher than size");
+    return;
+  }
+  //else
+  arr->data[index] = obj;
+}
+
+void me_array_free(ME_Array* arr){
+  arr->size = 0;
+  free(arr->data);
+}
+#include "ME_File.h"
+#include "ME_Print.h"
+#include "ME_Array.h"
+
+#include <string.h>
+#include <stdlib.h>
+
+int main(int argc, char** argv){
+  int rtrn_val = 0;
+
+  ME_Array file_arr = ME_ARRAY_INIT;
+  
+  if(argc < 2){
+    me_print(ME_LOGLEVEL_ERROR, "Too few arguments");
+    rtrn_val = -1; goto QUIT;
+  }
+
+  //This is the for loop which parses the args
+  //it skips the first arg, which is the program name
+  //it will treat every arg as a file, unless it's one of the specified flags
+  for(int i=1; i<argc; i++){
+    if(strncmp(argv[i], "--loglevel=", strlen("--loglevel=")) == 0){
+      //makes a new string from argv[i] starting after "--loglevel="
+      //which should be the value for the loglevel
+      const char* val = argv[i] + strlen("--loglevel=");
+      if(strcmp(val, "error") == 0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_ERROR; }
+      else if(strcmp(val, "warn") == 0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_WARN; }
+      else if(strcmp(val, "info") == 0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_INFO; }
+      else if(strcmp(val, "debug") == 0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_DEBUG; }
+      else if(strcmp(val, "none") == 0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_NONE; }
+      else{ me_print(ME_LOGLEVEL_WARN, "Invalid loglevel: %s", val); }
+    }
+    else{
+      ME_File* new_entry;
+      new_entry = malloc(sizeof(ME_File));
+
+      *new_entry = ME_FILE_NULL;
+
+      new_entry->name = malloc(strlen(argv[i]) + 1);
+      strcpy(new_entry->name, argv[i]);
+      
+      me_array_push(&file_arr, new_entry);
+    }
+  }
+  
+  for(size_t i=0; i<file_arr.size; i++){
+    if(me_openfile((ME_File*) file_arr.data[i]) != 0){
+      rtrn_val = -1; goto QUIT;
+    }
+  }
+  
+ QUIT:
+  
+  for(size_t i=0; i<file_arr.size; i++){
+    me_closefile((ME_File*) file_arr.data[i]);
+    free((ME_File*) file_arr.data[i]);
+  }
+
+  me_array_free(&file_arr);
+    
+  return rtrn_val;
+}
+#include "ME_File.h"
+
+#include "ME_Print.h"
+#include "ME_List.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+int me_openfile(ME_File* file){
+
+  if(file->name == NULL){
+    me_print(ME_LOGLEVEL_ERROR, "File NAME was not initialized");
+    return -1;
+  }
+  
+  file->cfile = fopen(file->name, "r+");
+  if(file->cfile == NULL){
+    me_print(ME_LOGLEVEL_ERROR, "Could not open file: %s", file->name);
+    return -1;
+  }
+
+  me_print(ME_LOGLEVEL_DEBUG, "File opened successfully: %s", file->name);
+
+  me_try_list(file);
+  
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    switch(((ME_Metadata*)file->metadata_arr.data[i])->fmt){
+    case ME_FORMAT_LIST_INFO:
+      me_get_list_info_fields(file);
+      break;
+    }
+  }
+
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    ME_Metadata* meta = ((ME_Metadata*)file->metadata_arr.data[i]);
+    me_print(ME_LOGLEVEL_DEBUG, "Format: %s, offset: %u, size %u",
+	     ME_FORMAT_STRING_TABLE[meta->fmt], meta->offset, meta->size);
+    
+    for(size_t j=0; j<((ME_Metadata*)file->metadata_arr.data[i])->field_arr.size; j++){
+      me_print(ME_LOGLEVEL_DEBUG, "ID: %s, offset: %u, value: %s",
+	       ((ME_MetadataField*)meta->field_arr.data[j])->id,
+	       ((ME_MetadataField*)meta->field_arr.data[j])->offset,
+	       ((ME_MetadataField*)meta->field_arr.data[j])->value);
+    }
+  }
+
+  return 0;
+}
+
+void me_closefile(ME_File* file){
+  
+  //fclose(NULL) is undefined behaviour
+  if(file->cfile != NULL){
+    me_print(ME_LOGLEVEL_DEBUG, "Closing file %s", file->name);
+    fclose(file->cfile);
+  }
+  //but free(NULL) is fine
+  
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    
+    for(size_t j=0; j<((ME_Metadata*)file->metadata_arr.data[i])->field_arr.size; j++){
+
+      /* whenever you see me casting a ME_Array entry into a temporary variable
+	 it's so the fucking commands fit in my screen, starting to thing my array system
+	 sucks but oh well
+      */
+
+      //freed the field_arr entry's id and value
+      ME_Metadata* meta = ((ME_Metadata*)file->metadata_arr.data[i]);
+      free(((ME_MetadataField*)meta->field_arr.data[j])->id);
+      free(((ME_MetadataField*)meta->field_arr.data[j])->value);
+      
+      //then frees the entry
+      free((ME_MetadataField*)meta->field_arr.data[j]);
+    }
+    //frees the broad field_arr
+    me_array_free(&(((ME_Metadata*)file->metadata_arr.data[i])->field_arr));
+    
+    //frees each entry in the metadata array
+    free((ME_Metadata*)file->metadata_arr.data[i]);
+  }
+  me_array_free(&(file->metadata_arr));
+
+  free(file->name);
+}
+
+void me_fread_bytes(FILE* cfile, size_t n, void* buf){
+  fread(buf, 1, n, cfile);
+}
+
+uint32_t me_fread_u32le(FILE* cfile){
+  uint8_t byte_arr[4];
+  me_fread_bytes(cfile, 4, byte_arr);
+
+  return (((uint32_t) byte_arr[3]) << 24 |
+	  ((uint32_t) byte_arr[2]) << 16 |
+	  ((uint32_t) byte_arr[1]) << 8  |
+	  ((uint32_t) byte_arr[0]));
+}
+
+uint32_t me_fread_u32be(FILE* cfile){
+  uint8_t byte_arr[4];
+  me_fread_bytes(cfile, 4, byte_arr);
+
+  return (((uint32_t) byte_arr[0]) << 24 |
+	  ((uint32_t) byte_arr[1]) << 16 |
+	  ((uint32_t) byte_arr[2]) << 8  |
+	  ((uint32_t) byte_arr[3]));
+}
+
+uint32_t me_fread_u32le_synchsafe(FILE* cfile){
+  uint8_t byte_arr[4];
+  me_fread_bytes(cfile, 4, byte_arr);
+
+  return (((uint32_t) byte_arr[3] & 0b0111111) << 21 |
+	  ((uint32_t) byte_arr[2] & 0b0111111) << 14 |
+	  ((uint32_t) byte_arr[1] & 0b0111111) << 7  |
+	  ((uint32_t) byte_arr[0] & 0b0111111));
+}
+
+uint32_t me_fread_u32be_synchsafe(FILE* cfile){
+  uint8_t byte_arr[4];
+  me_fread_bytes(cfile, 4, byte_arr);
+
+  return (((uint32_t) byte_arr[0] & 0b0111111) << 21 |
+	  ((uint32_t) byte_arr[1] & 0b0111111) << 14 |
+	  ((uint32_t) byte_arr[2] & 0b0111111) << 7  |
+	  ((uint32_t) byte_arr[3] & 0b0111111));
+}
+
+void me_fwrite_bytes(FILE* cfile, size_t n, void* buf){
+  fwrite(buf, 1, n, cfile);
+}
+
+void me_fwrite_u32le(FILE* cfile, uint32_t obj){
+  uint8_t bytes[4];
+  bytes[3] = (uint8_t) (obj >> 24);
+  bytes[2] = (uint8_t) (obj >> 16);
+  bytes[1] = (uint8_t) (obj >> 8 );
+  bytes[0] = (uint8_t) (obj);
+
+  me_fwrite_bytes(cfile, 4, bytes);
+}
+
+void me_fwrite_u32be(FILE* cfile, uint32_t obj){
+  uint8_t bytes[4];
+  bytes[0] = (uint8_t) (obj >> 24);
+  bytes[1] = (uint8_t) (obj >> 16);
+  bytes[2] = (uint8_t) (obj >> 8 );
+  bytes[3] = (uint8_t) (obj);
+
+  me_fwrite_bytes(cfile, 4, bytes);
+}
+
+void me_fwrite_u32le_synchsafe(FILE* cfile, uint32_t obj){
+  uint8_t bytes[4];
+  bytes[3] = (uint8_t) ((obj & 0x7f000000) >> 21);
+  bytes[2] = (uint8_t) ((obj & 0x007f0000) >> 14);
+  bytes[1] = (uint8_t) ((obj & 0x00007f00) >> 7 );
+  bytes[0] = (uint8_t) ((obj & 0x0000007f));
+
+  me_fwrite_bytes(cfile, 4, bytes);
+}
+
+void me_fwrite_u32be_synchsafe(FILE* cfile, uint32_t obj){
+  uint8_t bytes[4];
+  bytes[0] = (uint8_t) ((obj & 0x7f000000) >> 21);
+  bytes[1] = (uint8_t) ((obj & 0x007f0000) >> 14);
+  bytes[2] = (uint8_t) ((obj & 0x00007f00) >> 7 );
+  bytes[3] = (uint8_t) ((obj & 0x0000007f));
+
+  me_fwrite_bytes(cfile, 4, bytes);
+}
+#include "ME_List.h"
+
+#include "ME_Print.h"
+
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+void me_try_list(ME_File* file){
+
+  rewind(file->cfile);
+  
+  //check for id3v2 tags at the start of the file, then skips them
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    if(((ME_Metadata*)file->metadata_arr.data[i])->fmt == ME_FORMAT_ID3v2 &&
+       ((ME_Metadata*)file->metadata_arr.data[i])->offset == strlen("ID3")){
+      fseek(file->cfile,
+	    ((ME_Metadata*)file->metadata_arr.data[i])->offset +
+	    ((ME_Metadata*)file->metadata_arr.data[i])->size,
+	    SEEK_SET);
+    }
+  }
+  
+  char id[5];
+  id[4] = '\0';
+  me_fread_bytes(file->cfile, 4, id);
+  
+  if(strcmp(id, "RIFF")!=0) return; //if the first 4 bytes aren't riff, give up
+  
+  fseek(file->cfile, 8, SEEK_CUR); //skip the 4 bytes of RIFF chunk size + 4 bytes of
+                                   //format identifier
+  //will keep reading new chunks until it hits the data chunk
+  while(feof(file->cfile) == 0){
+    me_fread_bytes(file->cfile, 4, id);
+    if(strcmp(id, "LIST")==0){
+
+      size_t offset = ftell(file->cfile);
+      
+      //next 4 bytes are chunk size
+      uint32_t chunk_size = me_fread_u32le(file->cfile);
+
+      //looks for the LIST format
+      me_fread_bytes(file->cfile, 4, id);
+      
+      if(strcmp(id, "INFO")==0){
+
+	//makes the new entry then pushes it into the array
+	ME_Metadata* new_entry;
+	new_entry = malloc(sizeof(ME_Metadata));
+	
+	new_entry->fmt = ME_FORMAT_LIST_INFO;
+	new_entry->offset = offset;
+	new_entry->size = chunk_size;
+
+	new_entry->field_arr = ME_ARRAY_INIT;
+	
+	me_array_push(&(file->metadata_arr), new_entry);
+	
+      }else{
+	me_print(ME_LOGLEVEL_WARN, "LIST format not recognized");
+      }
+
+      // skips the rest of the chunk
+      fseek(file->cfile, (offset + strlen("LIST")) + chunk_size, SEEK_SET);
+    }
+    else if(strncmp(id, "ID3", 3)==0){
+
+      //subtract 1 becasue the ID3 id is 3 bytes long and we read 4
+      size_t offset = ftell(file->cfile) - 1;
+      //the byte we are currently in would be major version
+      
+      //skips over the revision number and flags bytes
+      fseek(file->cfile, 2, SEEK_CUR);
+      
+      uint32_t chunk_size = me_fread_u32le_synchsafe(file->cfile);
+	
+      //create entry, then push into metadata array
+      ME_Metadata* new_entry;
+      new_entry = malloc(sizeof(ME_Metadata));
+	
+      new_entry->fmt = ME_FORMAT_ID3v2;
+      new_entry->offset = offset;
+      new_entry->size = chunk_size;
+      
+      new_entry->field_arr = ME_ARRAY_INIT;
+      
+      me_array_push(&(file->metadata_arr),  new_entry);
+
+      //skips the rest of the chunk
+      fseek(file->cfile, (offset + strlen("ID3")) + chunk_size, SEEK_SET);
+    }
+    //if it reached the data chunk stop reading
+    else if(strcmp(id, "data")==0){
+      break;
+    }
+    //if it doesn't find a metadata chunk...
+    else{
+      //reads the chunk size for the current chunk then skips over by that much
+      uint32_t chunk_size = me_fread_u32le(file->cfile);
+      fseek(file->cfile, chunk_size, SEEK_CUR);
+    }
+  }
+}
+//end of try function
+
+void me_get_list_info_fields(ME_File* file){
+  //check if there is an info field
+  int info_index = -1;
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    if(((ME_Metadata*)file->metadata_arr.data[i])->fmt == ME_FORMAT_LIST_INFO){
+      info_index = i;
+    }
+  }
+  //and if there is none just return
+  if(info_index == -1){
+    me_print(ME_LOGLEVEL_WARN, "me_get_list_info_field(): file %s has no LIST_INFO chunks",
+	     file->name);
+    return;
+  }
+
+  fseek(file->cfile, ((ME_Metadata*)file->metadata_arr.data[info_index])->offset + 8, SEEK_SET);
+
+  while(ftell(file->cfile) <
+	((ME_Metadata*)file->metadata_arr.data[info_index])->size +
+	((ME_Metadata*)file->metadata_arr.data[info_index])->offset){
+
+    size_t offset = ftell(file->cfile);
+    
+    char id[5];
+    id[4] = '\0';
+    me_fread_bytes(file->cfile, 4, id);
+
+    uint32_t value_size = me_fread_u32le(file->cfile);
+    char value[value_size];
+    me_fread_bytes(file->cfile, value_size, value);
+
+    //skip padding byte if found
+    if(value_size % 2 != 0)fseek(file->cfile, 1, SEEK_CUR);
+
+    ME_MetadataField* new_entry;
+    new_entry = malloc(sizeof(ME_MetadataField));
+    new_entry->id = malloc(sizeof(char) * 5);
+    strcpy(new_entry->id, id);
+    new_entry->value = malloc(sizeof(char) * value_size);
+    strcpy(new_entry->value, value);
+    new_entry->offset = offset;
+    
+    me_array_push(&(((ME_Metadata*)file->metadata_arr.data[info_index])->field_arr), new_entry);
+  }
+}
+//end of get info field function
+
+void me_write_list_info_chunk(ME_File* file, ME_Array field_arr){
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    switch(((ME_Metadata*)file->metadata_arr.data[i])->fmt){
+    case ME_FORMAT_LIST_INFO:
+      me_print(ME_LOGLEVEL_WARN, "me_write_list_info(): file %s already has LIST_INFO chunk",
+	       file->name);
+      return;
+    case ME_FORMAT_ID3v2: //if it finds an id3v2 chunk at the start of file skip it
+      if(((ME_Metadata*)file->metadata_arr.data[i])->offset == strlen("ID3")){
+	fseek(file->cfile,
+	      ((ME_Metadata*)file->metadata_arr.data[i])->offset +
+	      ((ME_Metadata*)file->metadata_arr.data[i])->size,
+	      SEEK_SET);
+      }
+      break;
+    }
+  }
+
+  char id[5];
+  id[4]='\0';
+  me_fread_bytes(file->cfile, 4, id);
+  if(strcmp(id, "RIFF")==0){
+    size_t riff_id_offset = ftell(file->cfile);
+    
+    fseek(file->cfile, 8, SEEK_CUR); //skips size and fmt
+    //finds the data chunk and when it does it breaks out of the loop
+    while(feof(file->cfile) == 0){
+      me_fread_bytes(file->cfile, 4, id);
+      if(strcmp(id, "data")==0){
+	break;
+      }else{
+	uint32_t chunk_size = me_fread_u32le(file->cfile);
+	fseek(file->cfile, chunk_size, SEEK_CUR);
+      }
+    }
+    uint32_t original_data_chunk_offset = ftell(file->cfile);
+    
+    //gets chunk size of data chunk
+    uint32_t data_chunk_size = me_fread_u32le(file->cfile);
+    fseek(file->cfile, 8, SEEK_CUR); //goes back 8 bytes to the start of the id
+
+    //next copies over the whole data chunk to this array
+    uint8_t data_chunk[data_chunk_size + 8];
+    me_fread_bytes(file->cfile, data_chunk_size - 8, data_chunk);
+
+    //goes back to start of data chunk
+    fseek(file->cfile, original_data_chunk_offset - 4, SEEK_SET); 
+
+    uint32_t list_chunk_size;
+    for(size_t i=0; i<field_arr.size; i++){
+      //at this stage should check if the field id is a valid INFO id
+      list_chunk_size += strlen(((ME_MetadataField*) field_arr.data[i])->id);
+      list_chunk_size += 4; //for the field size bytes;
+	
+      //get the size of the field
+      uint32_t value_size = strlen(((ME_MetadataField*) field_arr.data[i])->value);
+      //adds the null terminator and extra padding if the size is odd
+      value_size += (value_size % 2 == 0) ? 1 : 2;
+
+      //adds that to list_chunk_size
+      list_chunk_size += value_size;
+    }
+    list_chunk_size += 4; //for the INFO format id
+      
+    fputs("RIFF", file->cfile);
+    me_fwrite_u32le(file->cfile, list_chunk_size);
+    fputs("INFO", file->cfile);
+      
+    for(size_t i=0; i<field_arr.size; i++){
+      /* this part should check wether the id is valid before writing it */ 
+      
+      //write field id
+      fputs(((ME_MetadataField*)field_arr.data[i])->id, file->cfile);
+      //get value size
+      uint32_t value_size = strlen(((ME_MetadataField*) field_arr.data[i])->value) + 1;
+      //write value size
+      me_fwrite_u32le(file->cfile, value_size);
+      //write the value
+      fputs(((ME_MetadataField*)field_arr.data[i])->value, file->cfile);
+      //write nul
+      fputc('\0', file->cfile);
+      if(value_size % 2 != 0) fputc('\0', file->cfile); //add padding if needed
+    }
+
+    //writes the data chunk back into the file
+    me_fwrite_bytes(file->cfile, data_chunk_size + 8, data_chunk);
+
+    /* next step is changing the size of th RIFF chunk */
+    
+    //first get the new size of the RIFF chunk,
+    //we already logged it's offset so we can just skip to the end
+    //and subtract the offset from that
+    fseek(file->cfile, SEEK_END, SEEK_SET);
+    size_t new_riff_chunk_size = ftell(file->cfile) - (riff_id_offset + 4); //+4 to exclude
+                                                                            //the size bytes
+    //next go back to start of the riff id and write in the size bytes
+    fseek(file->cfile, riff_id_offset, SEEK_SET);
+    me_fwrite_u32le(file->cfile, new_riff_chunk_size);
+
+
+    // finally, we create the metadata entry and push it into the array
+    ME_Metadata* new_entry;
+    new_entry = malloc(sizeof(ME_Metadata));
+    new_entry->fmt = ME_FORMAT_LIST_INFO;
+    new_entry->offset = original_data_chunk_offset;
+    new_entry->size = list_chunk_size;
+    
+    me_array_push(&(file->metadata_arr), new_entry);
+  }
+  else{
+    me_print(ME_LOGLEVEL_WARN, "me_write_list_info(): file %s is not a RIFF file", file->name);
+    return;
+  }
+}
+#include "ME_Metadata.h"
+
+const char* ME_FORMAT_STRING_TABLE[] = {"UNDEFINED", "ID3v2", "LIST_INFO"};
+/* ME_Print.c
+   Implementation file for ME_Print.h
+ */
+
+#include "ME_Print.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+
+ME_LogLevel ME_GLOBAL_LOGLEVEL = ME_DEFAULT_LOGLEVEL;
+
+void me_print(ME_LogLevel loglvl, const char* str, ...){
+  if(loglvl <= ME_GLOBAL_LOGLEVEL && ME_GLOBAL_LOGLEVEL != ME_LOGLEVEL_NONE){
+
+    //if loglevel is info print to stdout, otherwise print to stderr
+    FILE* out_buff = (loglvl == ME_LOGLEVEL_INFO) ? stdout : stderr;
+    
+    switch(loglvl){
+    case ME_LOGLEVEL_ERROR:
+      fprintf(out_buff, "\e[91m[ERROR] \e[0m");
+      break;
+    case ME_LOGLEVEL_WARN:
+      fprintf(out_buff, "\e[95m[WARNING] \e[0m");
+      break;
+    case ME_LOGLEVEL_INFO:
+      fprintf(out_buff, "\e[0m");
+      break;
+    case ME_LOGLEVEL_DEBUG:
+      fprintf(out_buff, "\e[94m[DEBUG] \e[0m");
+      break;
+    case ME_LOGLEVEL_NONE: //This case has no chance of happening, but i put it here because
+      return;              //if i don't gcc will yell at me
+    }
+
+    va_list args;
+    for(va_start(args, str); *str != '\0'; str++){
+      if(*str == '%'){
+	str++;
+	switch(*str){
+	case 'c': //char
+	  fprintf(out_buff, "%c", va_arg(args, int));
+	  break;
+	case 'i': //sint
+	  fprintf(out_buff, "%i", va_arg(args, int));
+	  break;
+	case 'u': //uint
+	  fprintf(out_buff, "%u", va_arg(args, int));
+	  break;
+	case 'x': //hex
+	  fprintf(out_buff, "%X", va_arg(args, int));
+	  break;
+	case 'b': //binary
+	  //C doesn't have formatted printing in binary form, so i have to make it myself
+	  //i'm printing 8 bits, in the future i might want to look into allowing specification
+	  //of number of bits to print
+	  unsigned char b = va_arg(args, int);
+	  for(int i = 7; i>=0; i--){
+	    fprintf(out_buff, "%c", (b & (unsigned int) 1 << i) ? '1' : '0');
+	  }
+	  break;
+	case 'f': //float
+	  fprintf(out_buff, "%f", va_arg(args, double));
+	  break;
+	case 's': //string
+	  fprintf(out_buff, "%s", va_arg(args, const char*));
+	  break;
+	  
+	default: //incase the format switch used is not recognized
+	  me_print(ME_LOGLEVEL_WARN, "Format switch unrecognized: %c", *str);
+	  break;
+	}
+      }else{
+	fprintf(out_buff, "%c", *str);
+      }
+    }
+    va_end(args);
+    fprintf(out_buff, "\n");
+  }
+}
+
+/* prints bert */
+void me_print_bert(){
+  me_print(ME_LOGLEVEL_ERROR, "BERT");
+}

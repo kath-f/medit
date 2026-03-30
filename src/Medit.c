@@ -1,0 +1,138 @@
+#include "ME_File.h"
+#include "ME_Print.h"
+#include "ME_Array.h"
+#include "ME_List.h"
+
+#include <string.h>
+#include <stdlib.h>
+
+static int get_field_index_from_id(const char* id, ME_File* file){
+  for(size_t i=0; i<file->metadata_arr.size; i++){
+    ME_Metadata* meta = me_array_get(&(file->metadata_arr), i);
+    for(size_t j=0; j<meta->field_arr.size; j++){
+      ME_MetadataField* field = me_array_get(&(meta->field_arr), j);
+      if(strcmp(field->id, id)==0){
+	return j;
+      }
+    }
+  }
+  return -1;
+}
+
+int main(int argc, char** argv){
+  int rtrn_val = 0;
+  
+  if(argc < 2){
+    me_print(ME_LOGLEVEL_ERROR, "Too few arguments");
+    rtrn_val = -1; goto QUIT;
+  }
+
+  ME_Array file_arr = ME_ARRAY_INIT;
+  ME_Array field_id_arr = ME_ARRAY_INIT;
+
+  //parsing the args routine
+  char* last_flag = NULL;
+  for(int i=1; i<argc; i++){
+    if(strcmp(argv[i], "-i")==0){
+      last_flag = argv[i];
+      continue;
+    }
+    else if(strcmp(argv[i], "--loglevel")==0){
+      last_flag = argv[i];
+      continue;
+    }
+    else if(strcmp(argv[i], "--remove_field")==0){
+      last_flag = argv[i];
+      continue;
+    }
+    else if(last_flag != NULL){
+      if(strcmp(last_flag, "-i")==0){ //if input flag is set, take argv as a file path
+	//create an entry for said file and push it into the array
+	ME_File* new_entry;
+	new_entry = malloc(sizeof(ME_File));
+
+	*new_entry = ME_FILE_NULL;
+	new_entry->name = malloc(strlen(argv[i])+1);
+	strcpy(new_entry->name, argv[i]);
+
+	me_array_push(&file_arr, new_entry);
+      }
+      else if(strcmp(last_flag, "--loglevel")==0){ //sets the global log level
+	if(     strcmp(argv[i], "error")==0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_ERROR; }
+	else if(strcmp(argv[i], "warn" )==0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_WARN;  }
+	else if(strcmp(argv[i], "info" )==0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_INFO;  }
+	else if(strcmp(argv[i], "debug")==0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_DEBUG; }
+	else if(strcmp(argv[i], "none") ==0){ ME_GLOBAL_LOGLEVEL = ME_LOGLEVEL_NONE;  }
+	else{
+	  me_print(ME_LOGLEVEL_ERROR, "Invalid loglevel %s", argv[i]);
+	}
+      }
+      else if(strcmp(last_flag, "--remove_field")==0){ //adds a field name to remove
+	me_array_push(&field_id_arr, argv[i]);
+      }
+    }
+  }
+
+  //if no flags were passed
+  if(last_flag == NULL){
+    rtrn_val = -1; goto QUIT;
+  }
+
+  //if no files were passed
+  if(file_arr.size == 0 ){
+    me_print(ME_LOGLEVEL_ERROR, "No input files passed");
+    rtrn_val = -1; goto QUIT;
+  }
+
+  //initializes the files
+  for(size_t i=0; i<file_arr.size; i++){
+    if(me_openfile((ME_File*)me_array_get(&file_arr, i)) != 0){
+      rtrn_val = -1; goto QUIT; //quits if file could not be initialized
+    }
+  }
+
+  //field removal routine
+  if(field_id_arr.size == 1){ //if theres only only one field ID then keep the field_id_arr index at 0
+    for(size_t i=0; i<file_arr.size; i++){
+      ME_File* file = (ME_File*) me_array_get(&file_arr, i);
+      char* id = (char*) me_array_get(&field_id_arr, 0);
+	
+      int index = get_field_index_from_id(id, file);
+      if(index != -1){
+	me_remove_list_info_field(file, index);
+      }else{
+	me_print(ME_LOGLEVEL_WARN, "ID %s not found in file %s", id, file->name);
+      }
+    }
+  }
+  else if(field_id_arr.size > 1 && field_id_arr.size == file_arr.size){
+    for(size_t i=0; i<file_arr.size; i++){ //otherwise update it with the file index
+      ME_File* file = me_array_get(&file_arr, i);
+      char* id = me_array_get(&field_id_arr, i);
+
+      int index = get_field_index_from_id(id, file);
+      if(index != -1){
+	me_remove_list_info_field(file, get_field_index_from_id(id, file));
+      }else{
+	me_print(ME_LOGLEVEL_WARN, "ID %s not found in file %s", id, file->name);
+      }
+    }
+  }
+  else if(field_id_arr.size != 0){
+    me_print(ME_LOGLEVEL_WARN, "%s %s",
+	     "Number of field IDs passed for removal should be either 1 or equal to ",
+	     "the number of files passed");
+  }
+
+  
+  //cleanup routines
+ QUIT:
+  for(size_t i=0; i<file_arr.size; i++){
+    me_closefile((ME_File*)me_array_get(&file_arr, i));
+    free((ME_File*)me_array_get(&file_arr, i));
+  }
+  me_array_free(&file_arr);
+
+  me_array_free(&field_id_arr);
+  return rtrn_val;
+}
