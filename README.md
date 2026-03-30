@@ -7,10 +7,10 @@ Thus far, i've been focusing on the LIST INFO format because it's very simple.
 
 ### THIS IS NOT A FUNCTIONAL VERSION YET
 
-All this version can do thus far is print metadata chunk info and their fields found in a file, and remove fields. And to see said info you must use the `--loglevel debug` flag.
+All this version can do thus far is print metadata chunk info with their fields, and delete fields within a file. And to see said info you must use the `--loglevel debug` flag.
 AAAAAND it only works with INFO and partially with ID3v2
 
-I had started this project in 2025, making it in C++ with TagLib but some TagLib quirks started to annoy me and OOP also started to annoy me, so i decided i was going to make everything myself.
+I had started this project in 2025, making it in C++ with TagLib but some TagLib quirks + OOP started to annoy me, so i decided i was going to make everything myself. No library dependencies
 
 ## COMPILING
 
@@ -34,4 +34,4 @@ The flags are:
 	       `none`
 	       You might want to set it to debug if you wanna see any actual output
 
-`--remove_field` removes a field (only works with LIST INFO) you can either specify one field to remove accross many files or specify to field to remove per file
+`--remove_field` removes a field (only works with LIST INFO) you can either specify one field to remove accross many files or specify one field to remove per file.
