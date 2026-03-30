@@ -14,7 +14,8 @@ I had started this project in 2025, making it in C++ with TagLib but some TagLib
 
 ## COMPILING
 
-Just run `make` this application does not have any library dependencies.
+Just run `make`.
+This application does not have any library dependencies.
 If you wish you can run `make debug` to get debugging features like asan and make it usable on gdb.
 
 ## USAGE
