@@ -1,6 +1,6 @@
 # MEDIT
 
-* Portmentau of MEtadata + EDITor*
+*Portmentau of MEtadata + EDITor*
 
 A terminal-based file metadata editor. The aim is to be very detailed, letting the user perform various actions, like creating and deleting chunks with the option to customize as many options in them as the format can, and in as many different formats as i can.
 Thus far, i've been focusing on the LIST INFO format because it's very simple.
